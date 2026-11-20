@@ -1,0 +1,94 @@
+# Creates a release tag (v2.Y.Z) on the main commit the run was started from,
+# after the tests pass on it, and a draft GitHub release with generated notes.
+# A maintainer edits the notes and publishes the draft; the tag exists by
+# then, so publishing creates no tag.
+#
+# The release bot (ocm-bot-release) creates the tag. The job runs in the
+# "release-automation" environment, which holds the bot's credentials, is
+# limited to main and needs an approval, so every release tag is reviewed
+# before it is created. The v1 and v2 tags are not moved.
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version to release, for example v2.1.0
+        required: true
+        type: string
+
+permissions: {}
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  # Accept only v2.Y.Z from main. main tracks major version 2; a new major
+  # version means changing this check and the README first.
+  check-inputs:
+    name: Check inputs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check inputs
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REF" != refs/heads/main ]]; then
+            echo "::error::run this workflow from main, not $GITHUB_REF"
+            exit 1
+          fi
+          if [[ ! "$VERSION" =~ ^v2\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::version must look like v2.1.0, got: $VERSION"
+            exit 1
+          fi
+
+  # Test the commit that will be tagged. This runs before the approval is
+  # requested, so approvers only see runs that passed.
+  test:
+    name: Test
+    needs: check-inputs
+    permissions:
+      contents: read
+      pull-requests: read
+    # The $/ self-repository syntax is not used yet because actionlint
+    # (v1.7.12) rejects it.
+    uses: ./.github/workflows/main.yaml # zizmor: ignore[self-repository]
+
+  release:
+    name: Create release tag and draft release
+    needs: test
+    runs-on: ubuntu-latest
+    environment:
+      name: release-automation
+      deployment: false
+    permissions: {}
+    steps:
+      - name: Generate app token
+        id: get_token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ secrets.RELEASE_BOT_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
+          repositories: ${{ github.event.repository.name }}
+          permission-contents: write
+
+      # Through the API, so no checkout keeps the token on disk.
+      - name: Create tag
+        env:
+          GH_TOKEN: ${{ steps.get_token.outputs.token }}
+          TAG: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" \
+            -f "ref=refs/tags/$TAG" -f "sha=$GITHUB_SHA" > /dev/null
+
+      - name: Create draft release
+        env:
+          GH_TOKEN: ${{ steps.get_token.outputs.token }}
+          TAG: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" \
+            --verify-tag --draft --generate-notes --title "$TAG"

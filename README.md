@@ -10,10 +10,12 @@ It installs the `ocm` binary matching the runner OS (Linux, macOS, Windows) and 
 
 | Action ref | Installs | Releases |
 |---|---|---|
-| `@v2` | OCM v2 CLI | [open-component-model/open-component-model](https://github.com/open-component-model/open-component-model/releases) |
+| `@v2.Y.Z` | OCM v2 CLI | [open-component-model/open-component-model](https://github.com/open-component-model/open-component-model/releases) |
 | `@v1` | OCM v1 (legacy) CLI | [open-component-model/ocm](https://github.com/open-component-model/ocm/releases) |
 
 `main` tracks `v2`. Workflows that still need the legacy CLI must reference `@v1`. The two major versions take different inputs and produce different outputs, see [Migrating from v1](#migrating-from-v1) and [v1 (legacy)](#v1-legacy).
+
+Reference an exact [release](https://github.com/open-component-model/ocm-setup-action/releases) such as `@v2.0.0`, or its commit SHA, and let Renovate or Dependabot update it. The `v1` and `v2` tags are no longer moved: `v1` stays at v1.1.0 (the last v1 release) and `v2` at v2.0.0.
 
 ## Inputs
 
@@ -42,7 +44,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: open-component-model/ocm-setup-action@v2
+      - uses: open-component-model/ocm-setup-action@v2.0.0
         with:
           version: 0.23.0
       - run: ocm version
@@ -84,6 +86,16 @@ jobs:
           version: v0.19.0
       - run: ocm --version
 ```
+
+## Releasing
+
+Releases are created by the release bot from a gated workflow, not by hand:
+
+1. Run the [Release](https://github.com/open-component-model/ocm-setup-action/actions/workflows/release.yaml) workflow
+   from `main` with the version, for example `v2.1.0`.
+2. After the tests pass, a reviewer approves the `release-automation` deployment. The bot then tags the commit and
+   creates a draft release with generated notes.
+3. Edit the notes and publish the draft.
 
 ## Licensing
 
